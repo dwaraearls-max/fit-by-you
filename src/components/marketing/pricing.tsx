@@ -1,29 +1,17 @@
 import Link from "next/link";
 import { Check, Minus } from "lucide-react";
 
-import { prisma } from "@/lib/db";
+import { loadPricingPlans } from "@/lib/pricing-plans";
 import { formatMoney } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
 /**
- * Reads the real Plan rows rather than hardcoding a price list, so the
- * marketing page and what the app actually enforces can never drift apart.
+ * Reads plan rows from the database when available, otherwise falls back to the
+ * seeded catalogue so marketing pages still render if DATABASE_URL is mis-set.
  */
 export async function PricingTable({ compact = false }: { compact?: boolean }) {
-  const plans = await prisma.plan.findMany({
-    where: { isActive: true },
-    orderBy: { sortOrder: "asc" },
-    include: { features: { orderBy: { sortOrder: "asc" } } },
-  });
-
-  if (plans.length === 0) {
-    return (
-      <p className="text-center text-sm text-muted-foreground">
-        Pricing is being updated. Please check back shortly.
-      </p>
-    );
-  }
+  const plans = await loadPricingPlans();
 
   return (
     <div className="grid gap-5 lg:grid-cols-3">
