@@ -4,22 +4,13 @@ import { z } from "zod";
 
 import { ForbiddenError } from "@/lib/permissions";
 import { TenantScopeError } from "@/lib/db";
+import {
+  EMPTY_FORM_STATE,
+  type FormState,
+} from "@/lib/form-state";
 
-/**
- * The shape every Server Action returns, consumed by `useActionState` on the
- * client. Keeping one shape means no form has to invent its own error plumbing.
- */
-export type FormState = {
-  ok?: boolean;
-  message?: string;
-  fieldErrors?: Record<string, string>;
-  /** Echoed back so a rejected form can repopulate without a round trip. */
-  values?: Record<string, string>;
-  /** Client navigates here after a successful auth action sets the session cookie. */
-  redirectTo?: string;
-} | null;
-
-export const EMPTY_FORM_STATE: FormState = null;
+export type { FormState } from "@/lib/form-state";
+export { EMPTY_FORM_STATE };
 
 export function fieldErrorsFrom(error: z.ZodError): Record<string, string> {
   const out: Record<string, string> = {};

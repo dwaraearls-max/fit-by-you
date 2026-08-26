@@ -9,7 +9,7 @@ import { Field, Input, PillToggle, Select, Textarea } from "@/components/ui/fiel
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { CUSTOMER_TAGS, CUSTOMER_TAG_META, GENDERS, GENDER_META, labelFor } from "@/lib/domain";
 import { toDateInputValue } from "@/lib/dates";
-import type { FormState } from "@/server/form";
+import type { FormState } from "@/lib/form-state";
 
 export type CustomerFormValues = {
   id?: string;

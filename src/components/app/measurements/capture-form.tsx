@@ -25,7 +25,7 @@ import {
 import { toDateInputValue } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import { recordMeasurementsAction } from "@/server/measurement-actions";
-import type { MeasurementFieldRow } from "@/server/services/measurements";
+import type { MeasurementFieldRow } from "@/lib/measurement-fields";
 
 export type PreviousValue = { valueTenths: number; unit: string };
 

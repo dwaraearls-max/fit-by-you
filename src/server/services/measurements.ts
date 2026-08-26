@@ -7,16 +7,9 @@ import {
   type MeasurementGroup,
   MEASUREMENT_GROUPS,
 } from "@/lib/domain";
+import type { MeasurementFieldRow } from "@/lib/measurement-fields";
 
-export type MeasurementFieldRow = {
-  id: string;
-  key: string;
-  label: string;
-  group: string;
-  unit: string;
-  sortOrder: number;
-  isCustom: boolean;
-};
+export type { MeasurementFieldRow } from "@/lib/measurement-fields";
 
 /**
  * The catalogue for a business, seeding the defaults on first use so an

@@ -4,13 +4,9 @@ import { prisma } from "@/lib/db";
 import { ACTIVE_ORDER_STATUSES } from "@/lib/domain";
 import { dayBounds } from "@/lib/dates";
 import { percent } from "@/lib/utils";
+import type { RevenuePoint } from "@/lib/dashboard-types";
 
-export type RevenuePoint = {
-  label: string;
-  month: string;
-  revenueMinor: number;
-  orders: number;
-};
+export type { RevenuePoint } from "@/lib/dashboard-types";
 
 export type TodayItem = {
   id: string;

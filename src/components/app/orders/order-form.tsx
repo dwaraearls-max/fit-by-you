@@ -25,7 +25,7 @@ import {
 } from "@/lib/domain";
 import { currencySymbol, formatMoney } from "@/lib/money";
 import { toDateInputValue } from "@/lib/dates";
-import type { FormState } from "@/server/form";
+import type { FormState } from "@/lib/form-state";
 
 export type OrderCustomerOption = {
   id: string;

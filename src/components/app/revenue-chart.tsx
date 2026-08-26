@@ -12,7 +12,7 @@ import {
 } from "recharts";
 
 import { formatMoney, formatMoneyCompact, minorToMajor } from "@/lib/money";
-import type { RevenuePoint } from "@/server/queries/dashboard";
+import type { RevenuePoint } from "@/lib/dashboard-types";
 
 type Datum = RevenuePoint & { revenue: number };
 

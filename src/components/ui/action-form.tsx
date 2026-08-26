@@ -4,7 +4,7 @@ import * as React from "react";
 import { useActionState } from "react";
 import { AlertCircle, CheckCircle2 } from "lucide-react";
 
-import type { FormState } from "@/server/form";
+import type { FormState } from "@/lib/form-state";
 import { cn } from "@/lib/utils";
 
 type Action = (state: FormState, formData: FormData) => Promise<FormState>;
