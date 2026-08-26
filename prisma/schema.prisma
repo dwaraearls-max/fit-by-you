@@ -1,0 +1,738 @@
+// ---------------------------------------------------------------------------
+// FIT BY YOU — data model
+//
+// Portability rules (SQLite in development, PostgreSQL in production):
+//   * No `enum`      — statuses/roles are String columns validated by zod in
+//                      src/lib/domain.ts. SQLite has no native enum type.
+//   * No `Json`      — structured blobs are stored as String and parsed.
+//   * No scalar list — multi-select data lives in child tables.
+//   * No Float money — every amount is an Int in minor units (pesewas).
+//   * No `@db.`      — native type attributes are provider specific.
+//
+// To deploy on PostgreSQL, change `provider` below to "postgresql" and point
+// DATABASE_URL at the cluster. Nothing else in this file needs to change.
+// ---------------------------------------------------------------------------
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  phone        String?
+  avatarKey    String?
+  /// Two-factor is modelled now so enabling it later is a settings change,
+  /// not a migration.
+  twoFactorEnabled Boolean @default(false)
+  twoFactorSecret  String?
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  memberships      Membership[]
+  sessions         Session[]
+  passwordResets   PasswordResetToken[]
+  createdCustomers Customer[]           @relation("CustomerCreatedBy")
+  measuredSets     MeasurementSet[]     @relation("MeasurementMeasuredBy")
+  uploadedPhotos   CustomerPhoto[]      @relation("PhotoUploadedBy")
+  createdOrders    Order[]              @relation("OrderCreatedBy")
+  recordedPayments Payment[]            @relation("PaymentRecordedBy")
+  createdStyles    StyleLibraryItem[]   @relation("StyleCreatedBy")
+  createdAppts     Appointment[]        @relation("AppointmentCreatedBy")
+  createdReminders PaymentReminder[]    @relation("ReminderCreatedBy")
+  notifications    Notification[]
+  auditLogs        AuditLog[]           @relation("AuditActor")
+
+  @@index([email])
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  userId     String
+  /// Only the SHA-256 of the session token is persisted; the raw token lives
+  /// exclusively in the httpOnly cookie.
+  tokenHash  String   @unique
+  businessId String?
+  userAgent  String?
+  ipAddress  String?
+  expiresAt  DateTime
+  lastUsedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Tenant
+// ---------------------------------------------------------------------------
+
+model Business {
+  id           String    @id @default(cuid())
+  name         String
+  slug         String    @unique
+  /// BusinessType — see src/lib/domain.ts
+  type         String    @default("TAILOR")
+  tagline      String?
+  phone        String?
+  email        String?
+  whatsapp     String?
+  addressLine  String?
+  city         String?
+  country      String    @default("GH")
+  currency     String    @default("GHS")
+  logoKey      String?
+  onboardingStep Int     @default(0)
+  onboardedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  settings          BusinessSettings?
+  subscription      Subscription?
+  memberships       Membership[]
+  customers         Customer[]
+  customerTags      CustomerTag[]
+  measurementFields MeasurementField[]
+  measurementSets   MeasurementSet[]
+  measurementValues MeasurementValue[]
+  styleProfiles     StyleProfile[]
+  stylePreferences  StylePreference[]
+  photos            CustomerPhoto[]
+  styleLibrary      StyleLibraryItem[]
+  orders            Order[]
+  orderItems        OrderItem[]
+  timelineEvents    OrderTimelineEvent[]
+  fittings          Fitting[]
+  appointments      Appointment[]
+  payments          Payment[]
+  paymentReminders  PaymentReminder[]
+  notifications     Notification[]
+  invoices          Invoice[]
+  auditLogs         AuditLog[]
+
+  @@index([slug])
+}
+
+model BusinessSettings {
+  id                    String  @id @default(cuid())
+  businessId            String  @unique
+  defaultUnit           String  @default("in")
+  timezone              String  @default("Africa/Accra")
+  weekStartsOn          Int     @default(1)
+  receiptFooter         String?
+  /// Placeholders {customer}, {business}, {outfit}, {amount}, {date}, {time}
+  whatsappOrderTemplate     String @default("Hi {customer}, an update on your {outfit}: it is now at the \"{status}\" stage. — {business}")
+  whatsappPaymentTemplate   String @default("Hi {customer}, a gentle reminder that {amount} is outstanding on your {outfit}. Thank you! — {business}")
+  whatsappFittingTemplate   String @default("Hi {customer}, your outfit is ready for fitting on {date} at {time}. See you then! — {business}")
+  notifyNewOrder        Boolean @default(true)
+  notifyPaymentReceived Boolean @default(true)
+  notifyPaymentOverdue  Boolean @default(true)
+  notifyFittingTomorrow Boolean @default(true)
+  notifyDeliveryDue     Boolean @default(true)
+  notifyNewCustomer     Boolean @default(true)
+  notifyMeasurementUpdated Boolean @default(false)
+  notifySubscription    Boolean @default(true)
+  customerPortalEnabled Boolean @default(false)
+  updatedAt             DateTime @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+}
+
+model Membership {
+  id           String    @id @default(cuid())
+  userId       String
+  businessId   String
+  /// Role — OWNER | MANAGER | TAILOR | ASSISTANT
+  role         String    @default("OWNER")
+  /// MembershipStatus — ACTIVE | INVITED | SUSPENDED
+  status       String    @default("ACTIVE")
+  invitedEmail String?
+  invitedAt    DateTime?
+  joinedAt     DateTime  @default(now())
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, businessId])
+  @@index([businessId])
+}
+
+// ---------------------------------------------------------------------------
+// Customers
+// ---------------------------------------------------------------------------
+
+model Customer {
+  id            String    @id @default(cuid())
+  businessId    String
+  /// Human-facing identifier, e.g. FBY-0001. Unique within the business.
+  code          String
+  firstName     String
+  lastName      String
+  fullName      String
+  phone         String
+  altPhone      String?
+  email         String?
+  /// Gender — FEMALE | MALE | OTHER | UNSPECIFIED
+  gender        String    @default("UNSPECIFIED")
+  addressLine   String?
+  city          String?
+  birthday      DateTime?
+  photoKey      String?
+  notes         String?
+  /// CustomerStatus — ACTIVE | ARCHIVED
+  status        String    @default("ACTIVE")
+  customerSince DateTime  @default(now())
+  lastVisitAt   DateTime?
+  /// Lowercased haystack of name, phone, code and email. Keeps global search
+  /// fast and case-insensitive without relying on `mode: "insensitive"`,
+  /// which SQLite does not support.
+  searchText    String    @default("")
+  createdById   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  business        Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  createdBy       User?              @relation("CustomerCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  tags            CustomerTag[]
+  measurementSets MeasurementSet[]
+  styleProfile    StyleProfile?
+  stylePreferences StylePreference[]
+  photos          CustomerPhoto[]
+  styleLibrary    StyleLibraryItem[]
+  orders          Order[]
+  fittings        Fitting[]
+  appointments    Appointment[]
+  payments        Payment[]
+  reminders       PaymentReminder[]
+
+  @@unique([businessId, code])
+  @@index([businessId, searchText])
+  @@index([businessId, fullName])
+  @@index([businessId, phone])
+  @@index([businessId, status])
+}
+
+model CustomerTag {
+  id         String   @id @default(cuid())
+  businessId String
+  customerId String
+  /// CustomerTagLabel — VIP | REGULAR | NEW | RETURNING | OUTSTANDING | WHOLESALE | BRIDAL
+  label      String
+  createdAt  DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([customerId, label])
+  @@index([businessId, label])
+}
+
+// ---------------------------------------------------------------------------
+// Measurements — append-only history
+// ---------------------------------------------------------------------------
+
+/// The catalogue of measurable fields for a business. Seeded with the standard
+/// set; businesses may add their own.
+model MeasurementField {
+  id         String   @id @default(cuid())
+  businessId String
+  key        String
+  label      String
+  /// MeasurementGroup — UPPER_BODY | LOWER_BODY | GARMENT | CUSTOM
+  group      String
+  unit       String   @default("in")
+  sortOrder  Int      @default(0)
+  isCustom   Boolean  @default(false)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, key])
+  @@index([businessId, group, sortOrder])
+}
+
+/// One measuring session. Immutable once written: updating a customer's
+/// measurements always inserts a new set, never mutates an old one. This is
+/// what makes trends and "Compare Measurements" possible.
+model MeasurementSet {
+  id             String   @id @default(cuid())
+  businessId     String
+  customerId     String
+  measuredAt     DateTime @default(now())
+  measuredById   String?
+  /// Denormalised so history survives a staff member leaving.
+  measuredByName String
+  unit           String   @default("in")
+  notes          String?
+  createdAt      DateTime @default(now())
+
+  business   Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer   Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  measuredBy User?              @relation("MeasurementMeasuredBy", fields: [measuredById], references: [id], onDelete: SetNull)
+  values     MeasurementValue[]
+  orders     Order[]
+
+  @@index([businessId, customerId, measuredAt])
+  @@index([businessId, measuredAt])
+}
+
+model MeasurementValue {
+  id          String @id @default(cuid())
+  businessId  String
+  setId       String
+  fieldKey    String
+  /// Denormalised label and group so a renamed or deleted field never
+  /// corrupts historical records.
+  fieldLabel  String
+  group       String
+  /// Stored in tenths of a unit — 32.5 in is 325. Integers avoid float drift.
+  valueTenths Int
+  unit        String @default("in")
+
+  business Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  set      MeasurementSet @relation(fields: [setId], references: [id], onDelete: Cascade)
+
+  @@unique([setId, fieldKey])
+  @@index([businessId, fieldKey])
+}
+
+// ---------------------------------------------------------------------------
+// Style
+// ---------------------------------------------------------------------------
+
+model StyleProfile {
+  id            String   @id @default(cuid())
+  businessId    String
+  customerId    String   @unique
+  /// PreferredFit — SLIM | REGULAR | RELAXED | OVERSIZED
+  preferredFit  String?
+  styleNotes    String?
+  /// Cuts, colours or fabrics this customer has asked you not to use again.
+  avoidNotes    String?
+  /// What they usually dress for — church, weddings, work, funerals.
+  occasionNotes String?
+  updatedAt     DateTime @updatedAt
+  createdAt     DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+}
+
+/// Multi-select style data as child rows, because scalar lists do not exist
+/// on SQLite.
+model StylePreference {
+  id         String @id @default(cuid())
+  businessId String
+  customerId String
+  /// PreferenceKind — STYLE | COLOR | FABRIC
+  kind       String
+  value      String
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([customerId, kind, value])
+  @@index([businessId, kind, value])
+}
+
+model CustomerPhoto {
+  id           String   @id @default(cuid())
+  businessId   String
+  customerId   String
+  orderId      String?
+  /// PhotoCategory — REFERENCE | PREVIOUS_OUTFIT | INSPIRATION | FINISHED |
+  /// FITTING | FABRIC | STYLE_REFERENCE
+  category     String   @default("REFERENCE")
+  storageKey   String
+  fileName     String
+  mimeType     String
+  sizeBytes    Int
+  width        Int?
+  height       Int?
+  caption      String?
+  uploadedById String?
+  createdAt    DateTime @default(now())
+
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  order      Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  uploadedBy User?    @relation("PhotoUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([businessId, customerId, category])
+  @@index([businessId, orderId])
+}
+
+model StyleLibraryItem {
+  id          String   @id @default(cuid())
+  businessId  String
+  title       String
+  /// StyleCategory — DRESSES | SHIRTS | TROUSERS | SUITS | KAFTANS | KENTE |
+  /// ANKARA | WEDDING | CORPORATE | TRADITIONAL
+  category    String
+  storageKey  String?
+  externalUrl String?
+  notes       String?
+  customerId  String?
+  orderId     String?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  business  Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer  Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  order     Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  createdBy User?     @relation("StyleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([businessId, category])
+}
+
+// ---------------------------------------------------------------------------
+// Orders
+// ---------------------------------------------------------------------------
+
+model Order {
+  id               String    @id @default(cuid())
+  businessId       String
+  /// Human-facing order number, e.g. 1042. Unique within the business.
+  code             String
+  customerId       String
+  title            String
+  /// OutfitType — DRESS | SHIRT | TROUSERS | SUIT | KAFTAN | SKIRT | BLOUSE |
+  /// GOWN | SMOCK | TWO_PIECE | AGBADA | OTHER
+  outfitType       String    @default("OTHER")
+  description      String?
+  fabric           String?
+  fabricNotes      String?
+  /// The exact measurement snapshot this outfit was cut from.
+  measurementSetId String?
+  priceMinor       Int       @default(0)
+  /// Denormalised from Payment rows inside a transaction so dashboard
+  /// aggregates never need a per-order subquery.
+  paidMinor        Int       @default(0)
+  balanceMinor     Int       @default(0)
+  /// OrderStatus — NEW | MEASURING | CUTTING | SEWING | FITTING |
+  /// ADJUSTMENTS | READY | DELIVERED | CANCELLED
+  status           String    @default("NEW")
+  /// Priority — NORMAL | RUSH
+  priority         String    @default("NORMAL")
+  deliveryDate     DateTime?
+  fittingDate      DateTime?
+  completedAt      DateTime?
+  deliveredAt      DateTime?
+  cancelledAt      DateTime?
+  notes            String?
+  searchText       String    @default("")
+  createdById      String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  business       Business             @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer       Customer             @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  measurementSet MeasurementSet?      @relation(fields: [measurementSetId], references: [id], onDelete: SetNull)
+  createdBy      User?                @relation("OrderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  items          OrderItem[]
+  timeline       OrderTimelineEvent[]
+  fittings       Fitting[]
+  photos         CustomerPhoto[]
+  payments       Payment[]
+  reminders      PaymentReminder[]
+  appointments   Appointment[]
+  styleLibrary   StyleLibraryItem[]
+
+  @@unique([businessId, code])
+  @@index([businessId, status])
+  @@index([businessId, deliveryDate])
+  @@index([businessId, customerId])
+  @@index([businessId, searchText])
+}
+
+model OrderItem {
+  id            String @id @default(cuid())
+  businessId    String
+  orderId       String
+  name          String
+  description   String?
+  quantity      Int    @default(1)
+  unitPriceMinor Int   @default(0)
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  order    Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, orderId])
+}
+
+model OrderTimelineEvent {
+  id          String   @id @default(cuid())
+  businessId  String
+  orderId     String
+  /// TimelineEventType — CREATED | STATUS_CHANGED | MEASUREMENT_TAKEN |
+  /// FABRIC_RECEIVED | FITTING_SCHEDULED | FITTING_COMPLETED |
+  /// PAYMENT_RECORDED | PHOTO_ADDED | NOTE_ADDED | DELIVERED | CANCELLED
+  type        String
+  title       String
+  description String?
+  occurredAt  DateTime @default(now())
+  actorId     String?
+  actorName   String   @default("System")
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  order    Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, orderId, occurredAt])
+}
+
+model Fitting {
+  id              String   @id @default(cuid())
+  businessId      String
+  orderId         String
+  customerId      String
+  scheduledFor    DateTime
+  durationMinutes Int      @default(30)
+  /// FittingStatus — SCHEDULED | COMPLETED | MISSED | CANCELLED
+  status          String   @default("SCHEDULED")
+  notes           String?
+  outcome         String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  order    Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, scheduledFor])
+}
+
+model Appointment {
+  id              String   @id @default(cuid())
+  businessId      String
+  customerId      String?
+  orderId         String?
+  /// AppointmentType — MEASUREMENT | FITTING | CONSULTATION | DELIVERY |
+  /// PICKUP | OTHER
+  type            String   @default("CONSULTATION")
+  title           String
+  scheduledFor    DateTime
+  durationMinutes Int      @default(30)
+  /// AppointmentStatus — SCHEDULED | COMPLETED | MISSED | CANCELLED
+  status          String   @default("SCHEDULED")
+  notes           String?
+  createdById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  business  Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer  Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  order     Order?    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation("AppointmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([businessId, scheduledFor])
+  @@index([businessId, status])
+}
+
+// ---------------------------------------------------------------------------
+// Money
+// ---------------------------------------------------------------------------
+
+model Payment {
+  id            String   @id @default(cuid())
+  businessId    String
+  orderId       String?
+  customerId    String
+  amountMinor   Int
+  /// PaymentMethod — CASH | MOBILE_MONEY | BANK_TRANSFER | CARD | OTHER
+  method        String   @default("CASH")
+  reference     String?
+  note          String?
+  receiptNumber String
+  receivedAt    DateTime @default(now())
+  recordedById  String?
+  createdAt     DateTime @default(now())
+
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  order      Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  recordedBy User?    @relation("PaymentRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@unique([businessId, receiptNumber])
+  @@index([businessId, receivedAt])
+  @@index([businessId, customerId])
+  @@index([businessId, orderId])
+}
+
+model PaymentReminder {
+  id          String    @id @default(cuid())
+  businessId  String
+  customerId  String
+  orderId     String?
+  /// ReminderChannel — WHATSAPP | SMS | EMAIL
+  channel     String    @default("WHATSAPP")
+  message     String
+  /// ReminderStatus — PENDING | SENT | DISMISSED
+  status      String    @default("PENDING")
+  sentAt      DateTime?
+  createdById String?
+  createdAt   DateTime  @default(now())
+
+  business  Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer  Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  order     Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  createdBy User?    @relation("ReminderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([businessId, status])
+}
+
+// ---------------------------------------------------------------------------
+// Platform
+// ---------------------------------------------------------------------------
+
+model Notification {
+  id         String    @id @default(cuid())
+  businessId String
+  /// Null means the notification is for everyone in the business.
+  userId     String?
+  /// NotificationType — NEW_ORDER | PAYMENT_RECEIVED | PAYMENT_OVERDUE |
+  /// FITTING_TOMORROW | DELIVERY_DUE | NEW_CUSTOMER | MEASUREMENT_UPDATED |
+  /// SUBSCRIPTION_RENEWAL
+  type       String
+  title      String
+  body       String
+  entityType String?
+  entityId   String?
+  readAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user     User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, readAt])
+  @@index([businessId, createdAt])
+}
+
+model Plan {
+  id                String   @id @default(cuid())
+  code              String   @unique
+  name              String
+  tagline           String
+  description       String
+  priceMonthlyMinor Int
+  priceYearlyMinor  Int
+  currency          String   @default("GHS")
+  customerLimit     Int?
+  staffLimit        Int?
+  storageMb         Int      @default(1024)
+  trialDays         Int      @default(14)
+  sortOrder         Int      @default(0)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+
+  features      PlanFeature[]
+  subscriptions Subscription[]
+}
+
+model PlanFeature {
+  id        String  @id @default(cuid())
+  planId    String
+  label     String
+  included  Boolean @default(true)
+  sortOrder Int     @default(0)
+
+  plan Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@index([planId, sortOrder])
+}
+
+model Subscription {
+  id                 String    @id @default(cuid())
+  businessId         String    @unique
+  planId             String
+  /// SubscriptionStatus — TRIALING | ACTIVE | PAST_DUE | CANCELLED
+  status             String    @default("TRIALING")
+  /// BillingInterval — MONTHLY | YEARLY
+  interval           String    @default("MONTHLY")
+  trialEndsAt        DateTime?
+  currentPeriodStart DateTime  @default(now())
+  currentPeriodEnd   DateTime
+  cancelledAt        DateTime?
+  /// Reserved for the payment provider reference once billing goes live.
+  provider           String?
+  providerRef        String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  plan     Plan      @relation(fields: [planId], references: [id])
+  invoices Invoice[]
+}
+
+model Invoice {
+  id             String    @id @default(cuid())
+  businessId     String
+  subscriptionId String
+  number         String    @unique
+  amountMinor    Int
+  currency       String    @default("GHS")
+  /// InvoiceStatus — DRAFT | OPEN | PAID | VOID
+  status         String    @default("OPEN")
+  issuedAt       DateTime  @default(now())
+  paidAt         DateTime?
+  periodStart    DateTime
+  periodEnd      DateTime
+
+  business     Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, issuedAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  businessId String
+  actorId    String?
+  actorName  String   @default("System")
+  /// e.g. customer.created, measurement.recorded, payment.recorded
+  action     String
+  entityType String
+  entityId   String?
+  summary    String
+  /// JSON encoded as text — `Json` columns are not portable to SQLite.
+  metadata   String?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  actor    User?    @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, createdAt])
+  @@index([businessId, action])
+}
