@@ -3,6 +3,7 @@ import { Inter, Playfair_Display } from "next/font/google";
 import { Toaster } from "sonner";
 
 import { TooltipProvider } from "@/components/ui/menu";
+import { getAppUrl } from "@/lib/app-url";
 
 import "./globals.css";
 
@@ -20,7 +21,7 @@ const playfair = Playfair_Display({
   weight: ["400", "500", "600"],
 });
 
-const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+const appUrl = getAppUrl();
 
 export const metadata: Metadata = {
   metadataBase: new URL(appUrl),

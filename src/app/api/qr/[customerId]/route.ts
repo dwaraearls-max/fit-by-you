@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import QRCode from "qrcode";
 
 import { prisma } from "@/lib/db";
+import { getAppUrl } from "@/lib/app-url";
 import { requireTenant } from "@/lib/tenant";
 
 /**
@@ -31,7 +32,7 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? "";
+  const base = getAppUrl();
   const target = `${base}/app/customers/${customer.id}`;
 
   const svg = await QRCode.toString(target, {

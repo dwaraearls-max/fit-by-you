@@ -6,6 +6,7 @@ import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 
 import { prisma } from "./db";
+import { getAppUrl } from "./app-url";
 
 const COOKIE_NAME = "fby_session";
 const SESSION_DAYS = 30;
@@ -14,7 +15,7 @@ const SESSION_DAYS = 30;
 function sessionCookieSecure(): boolean {
   if (process.env.COOKIE_SECURE === "true") return true;
   if (process.env.COOKIE_SECURE === "false") return false;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+  const appUrl = getAppUrl();
   return appUrl.startsWith("https://");
 }
 
